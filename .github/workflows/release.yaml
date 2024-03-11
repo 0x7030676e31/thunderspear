@@ -26,7 +26,7 @@ jobs:
           key: node-modules
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile --production
+        run: bun install --frozen-lockfile
 
       - name: Save node_modules
         id: cache-primes-save
