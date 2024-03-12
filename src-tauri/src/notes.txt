@@ -1,0 +1,12 @@
+> For each cluster try to preupload, on success:
+> Send upload credentials to the async stream
+
+NOTE: each cluster holds at most 250 MiB of data
+
+> Async stream takes at most n clusers and uploads them to the discord.
+> After the upload is done, signal is sent to the last section of the upload pipeline.
+
+> The last section of the upload pipeline is responsible for uploading the data to the discord.
+> This section is done fully asynchronously without any blocking.
+
+> After the upload is done, the metadata is saved on the local machine.

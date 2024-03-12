@@ -1,10 +1,14 @@
+use crate::reader::Reader;
+use crate::AppState;
+
 use std::collections::VecDeque;
 use std::sync::OnceLock;
 use std::{fs, env};
 
 use strsim::normalized_damerau_levenshtein as distance;
 use serde::{Deserialize, Serialize};
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, mpsc};
+use tauri::{AppHandle, Manager};
 
 #[derive(Serialize, Deserialize)]
 pub struct File {
@@ -32,7 +36,11 @@ pub struct State {
   #[serde(skip)]
   pub uploading: Option<u32>,
   #[serde(skip)]
-  abort_controller: Option<oneshot::Sender<()>>,
+  pub abort_controller: Option<oneshot::Sender<()>>,
+  #[serde(skip)]
+  pub this: Option<AppState>,
+  #[serde(skip)]
+  pub app_handle: Option<AppHandle>,
 }
 
 fn path() -> &'static str {
@@ -90,7 +98,26 @@ impl State {
   }
 
   fn upload_next(&mut self) {
-    todo!();
+    let file = self.queue.pop_front().unwrap();
+    self.uploading = Some(file.id);
+  
+    let (tx, abort) = oneshot::channel();
+    self.abort_controller = Some(tx);
+
+    let handle = self.app_handle.as_ref().unwrap().clone();
+
+    let (tx, mut rx) = mpsc::channel::<usize>(16);
+    let reader = Reader::new(&file.path, tx);
+
+    let id = file.id.to_string();
+    let size = reader.size as f64;
+    tokio::spawn(async move {
+      let mut uploaded = 0;
+      while let Some(read) = rx.recv().await {
+        uploaded += read;
+        handle.emit_all(&id, (uploaded as f64) / size * 100.0).unwrap();
+      }
+    });
   }
 
   pub fn download(&self, ids: Vec<u32>, target: String) {
