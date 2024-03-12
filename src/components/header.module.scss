@@ -1,6 +1,51 @@
 @import "../palette.scss";
-$header-height: 80px;
+$header-height: 60px;
 
 .header {
-  
+  background-color: $mantle;
+  height: $header-height;
+  box-sizing: border-box;
+  border-bottom: 1px solid $surface0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  gap: 5px;
+}
+
+.search {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  padding: 0 5px;
+
+  input {
+    box-sizing: border-box;
+    width: min(100%);
+    background-color: $base;
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    outline: none;
+    border: 1px solid transparent;
+    color: $subtext1;
+    padding: 6px 10px;
+    border-radius: 5px;
+    font-size: 17px;
+  }
+
+  input:focus {
+    width: 100%;
+    border: 1px solid $mauve;
+  }
+
+  input::placeholder {
+    color: $subtext0;
+  }
+}
+
+.separator {
+  height: calc($header-height / 2);
+  width: 2px;
+  background-color: $surface1;
+  border-radius: 2137px;
 }

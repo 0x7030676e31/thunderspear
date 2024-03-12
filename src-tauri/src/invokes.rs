@@ -38,8 +38,7 @@ pub async fn rename_file(state: State<'_, AppState>, file: u32, name: String) ->
 }
 
 #[tauri::command]
-pub async fn query_files(state: State<'_, AppState>, query: String) -> Result<(), ()> {
+pub async fn query_files(state: State<'_, AppState>, query: String) -> Result<Vec<u32>, ()> {
   let state = state.lock().await;
-  state.query(query);
-  Ok(())
+  Ok(state.query(query))
 }

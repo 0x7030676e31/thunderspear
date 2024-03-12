@@ -1,0 +1,36 @@
+@import "../palette.scss";
+
+.boxicon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  box-sizing: border-box;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  aspect-ratio: 1;
+
+  svg {
+    transition: all 0.15s;
+  }
+
+  &:not(.disabled) {
+    cursor: pointer;
+
+    svg {
+      color: $subtext0;
+    }
+
+    &:hover {
+      border: 1px solid $mauve;
+  
+      svg {
+        color: $text;
+      }
+    }
+  }
+
+  &.disabled > svg {
+    color: $overlay0;
+  }
+}

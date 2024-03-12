@@ -1,9 +1,8 @@
-use crate::strsim::damerau_levenshtein;
-
 use std::collections::VecDeque;
 use std::sync::OnceLock;
 use std::{fs, env};
 
+use strsim::normalized_damerau_levenshtein as distance;
 use serde::{Deserialize, Serialize};
 use tokio::sync::oneshot;
 
@@ -124,7 +123,31 @@ impl State {
     self.write();
   }
 
-  pub fn query(&self, query: String) {
-    todo!();
+  pub fn query(&self, query: String) -> Vec<u32> {
+    let mut root = self.root.iter().filter_map(|file| {
+      let dist = distance(&file.name, &query);
+      if dist < 0.5 {
+        Some((file.id, dist))
+      } else {
+        None
+      }
+    }).collect::<Vec<_>>();
+
+    let mut queue = self.queue.iter().filter_map(|file| {
+      let dist = distance(&file.path, &query);
+      if dist < 0.5 {
+        Some((file.id, dist))
+      } else {
+        None
+      }
+    }).collect::<Vec<_>>();
+
+    root.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+    queue.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+    
+    let root = root.into_iter().map(|(id, _)| id);
+    let queue = queue.into_iter().map(|(id, _)| id);
+
+    root.chain(queue).collect()
   }
 }
