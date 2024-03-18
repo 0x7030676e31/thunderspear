@@ -1,5 +1,6 @@
 import { createSignal, onCleanup, onMount } from "solid-js";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api";
 import { open } from "@tauri-apps/api/dialog";
 import Header from "./components/header";
 import Body from "./components/body";
@@ -25,11 +26,15 @@ export default function App() {
     unlisten_cancel = await listen("tauri://file-drop-cancelled", () => {
       setDropHover(false);
     });
+
+    await listen("uploading", ({ payload }) => console.log(payload));
   });
 
   async function addFiles() {
     const payload = await open({ title: "Thunderspear - Select Files", directory: false, multiple: true });
     if (!payload) return;
+
+    await invoke("upload_files", { files: payload });
   }
   
   onCleanup(() => {

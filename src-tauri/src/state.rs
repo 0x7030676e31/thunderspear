@@ -1,14 +1,17 @@
-use crate::reader::Reader;
+use crate::actions::{preupload, upload, send_message};
+use crate::reader::{CLUSTER_SIZE, Reader};
 use crate::AppState;
 
 use std::collections::VecDeque;
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::sync::OnceLock;
-use std::{fs, env};
+use std::{fs, env, cmp};
 
 use strsim::normalized_damerau_levenshtein as distance;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{oneshot, mpsc};
 use tauri::{AppHandle, Manager};
+use tokio::time;
 
 #[derive(Serialize, Deserialize)]
 pub struct File {
@@ -16,7 +19,8 @@ pub struct File {
   name: String,
   path: String,
   size: u64,
-  created_at: String,
+  clusters: Vec<String>,
+  created_at: u64,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -90,6 +94,8 @@ impl State {
 
     log::info!("{} files have been queued for upload...", files.len());
     let stringified = serde_json::to_string(&files).unwrap();
+    self.queue.extend(files);
+
     if self.uploading.is_none() {
       self.upload_next();
     }
@@ -105,18 +111,111 @@ impl State {
     self.abort_controller = Some(tx);
 
     let handle = self.app_handle.as_ref().unwrap().clone();
+    let channel = self.channel.as_ref().unwrap();
+    let token = self.token.as_ref().unwrap();
 
     let (tx, mut rx) = mpsc::channel::<usize>(16);
     let reader = Reader::new(&file.path, tx);
 
-    let id = file.id.to_string();
     let size = reader.size as f64;
+    handle.emit_all("uploading", (&file.id, size)).unwrap();
+      
+    let id = file.id.to_string();
     tokio::spawn(async move {
       let mut uploaded = 0;
       while let Some(read) = rx.recv().await {
         uploaded += read;
         handle.emit_all(&id, (uploaded as f64) / size * 100.0).unwrap();
       }
+    });
+
+    let (tx, mut rx) = mpsc::channel::<(String, usize)>(1);
+    let handle = tokio::spawn(async move {
+      let mut ids = vec![String::new(); reader.clusters];
+      while let Some((id, idx)) = rx.recv().await {
+        ids[idx] = id;
+      }
+
+      ids
+    });
+
+    let mut idx = 0;
+    while let Some(cluster) = reader.next_cluster(idx) {
+      let size = cmp::min(reader.size - idx * CLUSTER_SIZE, CLUSTER_SIZE);
+
+      let auth = token.clone();
+      let channel = channel.clone();
+      let tx = tx.clone();
+
+      tokio::spawn(async move {
+        let details = loop {
+          match preupload(&auth, &channel, idx, size).await {
+            Ok(details) => break details,
+            Err(retry_after) => time::sleep(time::Duration::from_secs_f32(retry_after)).await,
+          };
+        };
+
+        log::debug!("Uploading cluster {}... ({})", idx, details.len());
+        let now = time::Instant::now();
+        upload(&auth, &details, cluster).await;
+        
+        log::debug!("Cluster {} uploaded, took {:.2}s", idx, now.elapsed().as_secs_f64());
+        let now = time::Instant::now();
+
+        let resp = loop {
+          match send_message(&auth, &channel, &details, idx).await {
+            Ok(resp) => break resp,
+            Err(retry_after) => time::sleep(time::Duration::from_secs_f32(retry_after)).await,
+          };
+        };
+
+        log::debug!("Cluster {} sent, took {:.2}s", idx, now.elapsed().as_secs_f64());
+        if let Err(err) = tx.send((resp, idx)).await {
+          log::error!("Failed to send message: {}", err);
+        }
+      });
+
+      idx += 1;
+    }
+
+    let this = self.this.as_ref().unwrap().clone();
+    tokio::spawn(async move {
+      let ids = tokio::select! {
+        _ = abort => {
+          log::info!("Upload aborted...");
+          return;
+        }
+        ids = handle => ids,
+      };
+
+      let ids = match ids {
+        Ok(ids) => ids,
+        Err(err) => {
+          log::error!("Failed to upload: {}", err);
+          return;
+        }
+      };
+
+      log::info!("File {} has been uploaded successfully", file.path);
+      let mut state = this.write().await;
+      let name = file.path.split('/').last().unwrap().to_string();
+      state.root.push(File {
+        id: file.id,
+        name,
+        path: file.path,
+        size: reader.size as u64,
+        clusters: ids,
+        created_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64,
+      });
+
+      state.write();
+      if state.queue.len() > 0 {
+        state.upload_next();
+        return;
+      }
+
+      state.abort_controller = None;
+      state.uploading = None;
     });
   }
 
