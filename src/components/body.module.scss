@@ -1,0 +1,37 @@
+@import "../palette.scss";
+
+.body {
+  flex-grow: 1;
+  width: 100%;
+  background-color: $base;
+  position: relative;
+}
+
+.fallback {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -60%);
+  position: absolute;
+  font-size: 1.4rem;
+  color: $text;
+
+  p {
+    font-weight: 500;
+    text-align: center;
+  }
+}
+
+.dropzone {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  transition: background-color 0.3s;
+  background-color: transparent;
+  pointer-events: none;
+
+  &.hover {
+    background-color: transparentize($mauve, 0.7);
+  }
+}

@@ -4,10 +4,13 @@ import { invoke } from "@tauri-apps/api";
 import { open } from "@tauri-apps/api/dialog";
 import Header from "./components/header";
 import Body from "./components/body";
+import Footer from "./components/footer";
 import "./index.scss";
 
 export default function App() {
   const [ dropHover, setDropHover ] = createSignal(false);
+  const [ queue, setQueue ] = createSignal<IQueuedFile[]>([]);
+  const [ files, setFiles ] = createSignal<IFile[]>([]);
   const [ query, setQuery ] = createSignal("");
 
   let unlisten_drop: UnlistenFn;
@@ -17,6 +20,9 @@ export default function App() {
   onMount(async () => {
     unlisten_drop = await listen<string[]>("tauri://file-drop", async ({ payload }) => {
       setDropHover(false);
+
+      const res = await invoke<IQueuedFile[]>("upload_files", { files: payload });
+      setQueue([ ...queue(), ...res]);
     });
 
     unlisten_hover = await listen("tauri://file-drop-hover", () => {
@@ -34,7 +40,8 @@ export default function App() {
     const payload = await open({ title: "Thunderspear - Select Files", directory: false, multiple: true });
     if (!payload) return;
 
-    await invoke("upload_files", { files: payload });
+    const res = await invoke<IQueuedFile[]>("upload_files", { files: payload });
+    setQueue([ ...queue(), ...res]);
   }
   
   onCleanup(() => {
@@ -44,9 +51,10 @@ export default function App() {
   });
 
   return (
-    <>
+    <div class="app">
       <Header addFiles={addFiles} query={query} setQuery={setQuery} />
-      <Body query={query} />
-    </>
+      <Body query={query} queue={queue} files={files} isHovering={dropHover} />
+      <Footer />
+    </div>
   );
 }
